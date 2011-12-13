@@ -5,7 +5,7 @@ except ImportError:
     from distutils.core import setup
 
 PACKAGE = 'django-jcache'
-VERSION = '0.1'
+VERSION = '0.2'
 
 setup(
     name=PACKAGE, version=VERSION,
@@ -17,7 +17,7 @@ setup(
     maintainer_email='james@tartarus.org',
     install_requires=[
         'Django>=1.3',
-        'django-celery',
+        'celery',
     ],
     # url = 'http://code.artfinder.com/projects/django-jcache/',
     classifiers=[

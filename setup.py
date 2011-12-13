@@ -17,6 +17,7 @@ setup(
     maintainer_email='james@tartarus.org',
     install_requires=[
         'Django>=1.3',
+        'django-celery',
     ],
     # url = 'http://code.artfinder.com/projects/django-jcache/',
     classifiers=[

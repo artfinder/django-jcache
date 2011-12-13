@@ -5,7 +5,7 @@ from django.core.cache.backends.locmem import LocMemCache
 from django.core.cache.backends.filebased import FileBasedCache
 from django.conf import settings
 
-from lib.jcache import JCache
+from jcache import JCache
 
 
 CACHES = {

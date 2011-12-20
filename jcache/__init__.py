@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 def invoke_async(jcache, key, version, generator, stale, args, kwargs):
     logger = invoke_async.get_logger()
     #kwargs['logger'] = logger
+    logger.info("running generator %s" % generator)
     value = generator(*args, **kwargs)
     if stale is None:
         stale_at = time.time() + jcache.stale
@@ -129,7 +130,7 @@ class JCache(object):
             
             if generate and generator is not None and flag == 1:
                 do_decr = False
-                logger.info('jcache (sync) generating...')
+                logger.info('jcache (async) generating...')
                 result = invoke_async.delay(
                     self,
                     key,

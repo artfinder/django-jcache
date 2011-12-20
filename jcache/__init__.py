@@ -26,11 +26,12 @@ def invoke_async(jcache, key, version, generator, stale, args, kwargs):
         stale_at = time.time() + stale
     #logger.info("setting %s = %s (%s/%s)" % (key, value, stale_at, jcache.expiry))
     logger.info("setting key %s (%s/%s)" % (key, stale_at, jcache.expiry))
-    jcache._cache.set(
-        "data:%s" % key,
-        (value, stale_at),
+    jcache.set(
+        key,
+        value=value,
+        stale_at=stale_at,
         timeout=jcache.expiry,
-        version=version
+        version=version,
         )
     jcache._reset_flag(key, version=version)
     return value
@@ -182,6 +183,24 @@ class JCache(object):
 
     def _reset_flag(self, key, version):
         self._cache.set("flag:%s" % key, 0, version=version)
+
+    def set(self,
+            key,
+            value=None,
+            stale_at=None,
+            version=None,
+            timeout=None
+            ):
+        if timeout is None:
+            timeout = self.expiry
+        if stale_at is None:
+            stale_at = time.time() + self.stale
+        return self._cache.set(
+            "data:%s" % key,
+            (value, stale_at),
+            timeout=timeout,
+            version=version,
+            )
 
     def delete(self, key, version):
         self._cache.delete(key, version=version)

@@ -115,7 +115,7 @@ class JCache(object):
                 )
             generate = False
             if packed is None:
-                generate = True
+                generate = generator is not None
                 if wait_on_generate:
                     # we'll get a startup herd here; another approach is to
                     # instead wait until there's a value, but that's harder

@@ -192,3 +192,14 @@ class TestJCacheAsyncRegen(TestCase):
         self.assertEqual('result', jc.get("cachekey", generator=param_build2, wait_on_generate=True, param1='next'))
         time.sleep(1)
         self.assertEqual('next', jc.get("cachekey", generator=param_build2, wait_on_generate=True, param1='other'))
+
+    def test_async_failed_build(self):
+        # test that if an async build fails, the flag gets decremented to 0
+        jc = JCACHES["async"]
+        c = CACHES['file-backed']
+        
+        self.assertEqual(None, jc.get("cachekey", generator=failed_build))
+        self.assertEqual(1, c.get("flag:cachekey"))
+        time.sleep(2)
+        self.assertEqual(0, c.get("flag:cachekey"))
+

@@ -16,24 +16,28 @@ logger = logging.getLogger(__name__)
 
 @task
 def invoke_async(jcache, key, version, generator, stale, args, kwargs):
-    logger = invoke_async.get_logger()
-    #kwargs['logger'] = logger
-    logger.info("running generator %s" % generator)
-    value = generator(*args, **kwargs)
-    if stale is None:
-        stale_at = time.time() + jcache.stale
-    else:
-        stale_at = time.time() + stale
-    #logger.info("setting %s = %s (%s/%s)" % (key, value, stale_at, jcache.expiry))
-    logger.info("setting key %s (%s/%s)" % (key, stale_at, jcache.expiry))
-    jcache.set(
-        key,
-        value=value,
-        stale_at=stale_at,
-        timeout=jcache.expiry,
-        version=version,
-        )
-    jcache._reset_flag(key, version=version)
+    try:
+        logger = invoke_async.get_logger()
+        #kwargs['logger'] = logger
+        logger.info("running generator %s" % generator)
+        value = generator(*args, **kwargs)
+        if stale is None:
+            stale_at = time.time() + jcache.stale
+        else:
+            stale_at = time.time() + stale
+        #logger.info("setting %s = %s (%s/%s)" % (key, value, stale_at, jcache.expiry))
+        logger.info("setting key %s (%s/%s)" % (key, stale_at, jcache.expiry))
+        jcache.set(
+            key,
+            value=value,
+            stale_at=stale_at,
+            timeout=jcache.expiry,
+            version=version,
+            )
+        jcache._decr_flag(key, version=version)
+    except:
+        jcache._decr_flag(key, version=version)
+        raise
     return value
 
 

@@ -34,10 +34,8 @@ def invoke_async(jcache, key, version, generator, stale, args, kwargs):
             timeout=jcache.expiry,
             version=version,
             )
+    finally:
         jcache._decr_flag(key, version=version)
-    except:
-        jcache._decr_flag(key, version=version)
-        raise
     return value
 
 

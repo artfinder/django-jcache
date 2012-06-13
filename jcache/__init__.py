@@ -19,14 +19,14 @@ def invoke_async(jcache, key, version, generator, stale, args, kwargs):
     try:
         logger = invoke_async.get_logger()
         #kwargs['logger'] = logger
-        logger.info("running generator %s" % generator)
+        logger.debug("running generator %s" % generator)
         value = generator(*args, **kwargs)
         if stale is None:
             stale_at = time.time() + jcache.stale
         else:
             stale_at = time.time() + stale
         #logger.info("setting %s = %s (%s/%s)" % (key, value, stale_at, jcache.expiry))
-        logger.info("setting key %s (%s/%s)" % (key, stale_at, jcache.expiry))
+        logger.debug("setting key %s (%s/%s)" % (key, stale_at, jcache.expiry))
         jcache.set(
             key,
             value=value,
@@ -34,10 +34,8 @@ def invoke_async(jcache, key, version, generator, stale, args, kwargs):
             timeout=jcache.expiry,
             version=version,
             )
+    finally:
         jcache._decr_flag(key, version=version)
-    except:
-        jcache._decr_flag(key, version=version)
-        raise
     return value
 
 
@@ -205,6 +203,13 @@ class JCache(object):
             timeout=timeout,
             version=version,
             )
+
+    def freshen(self, key, version=None, generator=None, stale=None, *args, **kwargs):
+        flag = self._incr_flag(key, version)
+        if flag == 1:
+            return invoke_async.delay(self, key, version, generator, stale, args, kwargs)
+        else:
+            self._decr_flag(key, version)
 
     def delete(self, key, version):
         self._cache.delete(key, version=version)

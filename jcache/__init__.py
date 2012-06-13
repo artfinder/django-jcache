@@ -204,6 +204,13 @@ class JCache(object):
             version=version,
             )
 
+    def freshen(self, key, version=None, generator=None, stale=None, *args, **kwargs):
+        flag = self._incr_flag(key, version)
+        if flag == 1:
+            return invoke_async.delay(self, key, version, generator, stale, args, kwargs)
+        else:
+            self._decr_flag(key, version)
+
     def delete(self, key, version):
         self._cache.delete(key, version=version)
 

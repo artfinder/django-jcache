@@ -180,6 +180,23 @@ class TestJCacheAsyncRegen(TestCase):
         self.assertEqual('result', jc.get('cachekey', generator=enumerating_build, wait_on_generate=True))
         self.assertEqual(1, c.get('build-count'))
 
+    def test_freshen_runs_once(self):
+        jc = JCACHES["async"]
+        c = CACHES['file-backed']
+        c.set('build-count', 0)
+        now = time.time()
+        c.set('data:cachekey', ('initial', now-2), version=None)
+        self.assertEqual('initial', c.get('data:cachekey')[0])
+        # key is already stale, so if we request twice in a row we should get
+        # initial both times, then we sleep a couple of seconds and we should
+        # get result it having been generated once (build-count==1)
+        jc.freshen('cachekey', generator=enumerating_build)
+        jc.freshen('cachekey', generator=enumerating_build)
+        # wait for it to be generated
+        time.sleep(3)
+        self.assertEqual('result', jc.get('cachekey', generator=enumerating_build, wait_on_generate=True))
+        self.assertEqual(1, c.get('build-count'))
+
     def test_regression_1(self):
         # we weren't decrementing the flag if we didn't regenerate
         # causing multiple hits before stale to end up with a non-zero

@@ -134,14 +134,17 @@ class JCache(object):
             if generate and generator is not None and flag == 1:
                 do_decr = False
                 logger.info('jcache (async) generating...')
-                result = invoke_async.delay(
-                    self,
-                    key,
-                    version,
-                    generator,
-                    stale,
-                    args,
-                    kwargs
+                result = invoke_async.apply_async(
+                        args=(
+                            self,
+                            key,
+                            version,
+                            generator,
+                            stale,
+                            args,
+                            kwargs
+                        ),
+                        expires=stale or self.stale
                     )
                 if packed is None:
                     if not wait_on_generate:
@@ -207,7 +210,10 @@ class JCache(object):
     def freshen(self, key, version=None, generator=None, stale=None, *args, **kwargs):
         flag = self._incr_flag(key, version)
         if flag == 1:
-            return invoke_async.delay(self, key, version, generator, stale, args, kwargs)
+            return invoke_async.apply_async(
+                args=(self, key, version, generator, stale, args, kwargs),
+                expires=stale or self.stale
+            )
         else:
             self._decr_flag(key, version)
 

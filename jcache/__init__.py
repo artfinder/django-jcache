@@ -107,7 +107,7 @@ class JCache(object):
             # conflate them with '-' to make the key
             key = '-'.join(map(lambda x: unicode(x).encode('utf-8'), key))
 
-        flag = self._incr_flag(key, version)
+        flag = self._incr_flag(key, version, 1 + (stale or self.stale))
         do_decr = True
         try:
             packed = self._cache.get(
@@ -171,13 +171,13 @@ class JCache(object):
 
         return value
 
-    def _incr_flag(self, key, version):
+    def _incr_flag(self, key, version, timeout=None):
         try:
             v = self._cache.incr("flag:%s" % key, version=version)
             #print "_incr_flag ->", v
             return v
         except ValueError:
-            self._cache.set("flag:%s" % key, 1, version=version)
+            self._cache.set("flag:%s" % key, 1, version=version, timeout=timeout)
             #print "_incr_flag ->", 1
             return 1
 
@@ -186,8 +186,8 @@ class JCache(object):
         #print "_decr_flag ->", v
         return v
 
-    def _reset_flag(self, key, version):
-        self._cache.set("flag:%s" % key, 0, version=version)
+    def _reset_flag(self, key, version, timeout=None):
+        self._cache.set("flag:%s" % key, 0, version=version, timeout=timeout)
 
     def set(self,
             key,
@@ -208,7 +208,7 @@ class JCache(object):
             )
 
     def freshen(self, key, version=None, generator=None, stale=None, *args, **kwargs):
-        flag = self._incr_flag(key, version)
+        flag = self._incr_flag(key, version, 1 + (stale or self.stale))
         if flag == 1:
             return invoke_async.apply_async(
                 args=(self, key, version, generator, stale, args, kwargs),

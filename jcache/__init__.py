@@ -15,25 +15,26 @@ logger = logging.getLogger(__name__)
 
 
 @task
-def invoke_async(jcache, key, version, generator, stale, args, kwargs):
+def invoke_async(jcache, key, version, generator, stale, args, kwargs, expires_at):
     try:
-        logger = invoke_async.get_logger()
-        #kwargs['logger'] = logger
-        logger.debug("running generator %s" % generator)
-        value = generator(*args, **kwargs)
-        if stale is None:
-            stale_at = time.time() + jcache.stale
-        else:
-            stale_at = time.time() + stale
-        #logger.info("setting %s = %s (%s/%s)" % (key, value, stale_at, jcache.expiry))
-        logger.debug("setting key %s (%s/%s)" % (key, stale_at, jcache.expiry))
-        jcache.set(
-            key,
-            value=value,
-            stale_at=stale_at,
-            timeout=jcache.expiry,
-            version=version,
-            )
+        if expires_at is None or expires_at > time.time():
+            logger = invoke_async.get_logger()
+            #kwargs['logger'] = logger
+            logger.debug("running generator %s" % generator)
+            value = generator(*args, **kwargs)
+            if stale is None:
+                stale_at = time.time() + jcache.stale
+            else:
+                stale_at = time.time() + stale
+            #logger.info("setting %s = %s (%s/%s)" % (key, value, stale_at, jcache.expiry))
+            logger.debug("setting key %s (%s/%s)" % (key, stale_at, jcache.expiry))
+            jcache.set(
+                key,
+                value=value,
+                stale_at=stale_at,
+                timeout=jcache.expiry,
+                version=version,
+                )
     finally:
         jcache._decr_flag(key, version=version)
     return value
@@ -142,9 +143,9 @@ class JCache(object):
                             generator,
                             stale,
                             args,
-                            kwargs
+                            kwargs,
+                            time.time() + (stale or self.stale)
                         ),
-                        expires=stale or self.stale
                     )
                 if packed is None:
                     if not wait_on_generate:
@@ -211,8 +212,7 @@ class JCache(object):
         flag = self._incr_flag(key, version, 1 + (stale or self.stale))
         if flag == 1:
             return invoke_async.apply_async(
-                args=(self, key, version, generator, stale, args, kwargs),
-                expires=stale or self.stale
+                args=(self, key, version, generator, stale, args, kwargs, time.time() + (stale or self.stale)),
             )
         else:
             self._decr_flag(key, version)

@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 @task
 def invoke_async(jcache, key, version, generator, stale, args, kwargs, expires_at):
+    value = None
+    
     try:
         if expires_at is None or expires_at > time.time():
             logger = invoke_async.get_logger()
@@ -111,6 +113,7 @@ class JCache(object):
             key = '-'.join(map(lambda x: unicode(x).encode('utf-8'), key))
 
         flag = self._incr_flag(key, version, 1 + (stale or self.stale))
+        value = None
         do_decr = True
         try:
             packed = self._cache.get(

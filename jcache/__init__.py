@@ -183,9 +183,12 @@ class JCache(object):
             return 1
 
     def _decr_flag(self, key, version):
-        v = self._cache.decr("flag:%s" % key, version=version)
-        #print "_decr_flag ->", v
-        return v
+        try:
+            v = self._cache.decr("flag:%s" % key, version=version)
+            #print "_decr_flag ->", v
+            return v
+        except ValueError:
+            return 0
 
     def _reset_flag(self, key, version, timeout=None):
         self._cache.set("flag:%s" % key, 0, version=version, timeout=timeout)

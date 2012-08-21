@@ -40,9 +40,9 @@ def invoke_async(jcache, key, version, generator, stale, args, kwargs, expires_a
         else:
             logger.debug('invoke_async (%s) expired while waiting for worker' $ generator)
     finally:
-        jcache._decr_flag(key, version=version)
+        self._decr_flag(key, version, 1 + (stale or jcache.stale))
+   
     return value
-
 
 class JCache(object):
     """
@@ -173,7 +173,7 @@ class JCache(object):
                         logger.info("got the key %s = %s", key, value)
         finally:
             if do_decr:
-                self._decr_flag(key, version)
+                self._decr_flag(key, version, 1 + (stale or self.stale))
 
         return value
 
@@ -187,16 +187,17 @@ class JCache(object):
             #print "_incr_flag ->", 1
             return 1
 
-    def _decr_flag(self, key, version):
+    def _decr_flag(self, key, version, timeout=None):
         try:
             v = self._cache.decr("flag:%s" % key, version=version)
             #print "_decr_flag ->", v
             return v
         except ValueError:
-            return 0
+            return self._reset_flag(key, version, timeout, 0)
 
-    def _reset_flag(self, key, version, timeout=None):
-        self._cache.set("flag:%s" % key, 0, version=version, timeout=timeout)
+    def _reset_flag(self, key, version, timeout=None, value=0):
+        self._cache.set("flag:%s" % key, value, version=version, timeout=timeout)
+        return value
 
     def set(self,
             key,

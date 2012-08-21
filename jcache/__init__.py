@@ -35,6 +35,8 @@ def invoke_async(jcache, key, version, generator, stale, args, kwargs, expires_a
                 timeout=jcache.expiry,
                 version=version,
                 )
+        else:
+            logger.debug('invoke_async (%s) expired while waiting for worker' $ generator)
     finally:
         jcache._decr_flag(key, version=version)
     return value

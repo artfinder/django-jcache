@@ -183,9 +183,7 @@ class JCache(object):
             #print "_incr_flag ->", v
             return v
         except ValueError:
-            self._cache.set("flag:%s" % key, 1, version=version, timeout=timeout)
-            #print "_incr_flag ->", 1
-            return 1
+            return self._reset_flag(key, version, timeout, 1)
 
     def _decr_flag(self, key, version, timeout=None):
         try:

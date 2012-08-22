@@ -5,7 +5,7 @@ except ImportError:
     from distutils.core import setup
 
 PACKAGE = 'django-jcache'
-VERSION = '0.6-af1'
+VERSION = '0.6-af2'
 
 setup(
     name=PACKAGE, version=VERSION,

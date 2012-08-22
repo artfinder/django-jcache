@@ -19,8 +19,9 @@ def invoke_async(jcache, key, version, generator, stale, args, kwargs, expires_a
     value = None
     
     try:
+        logger = invoke_async.get_logger()
+        
         if expires_at is None or expires_at > time.time():
-            logger = invoke_async.get_logger()
             #kwargs['logger'] = logger
             logger.debug("running generator %s" % generator)
             value = generator(*args, **kwargs)

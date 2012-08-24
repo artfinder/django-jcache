@@ -178,17 +178,13 @@ class JCache(object):
 
     def _incr_flag(self, key, version, timeout=None):
         try:
-            v = self._cache.incr("flag:%s" % key, version=version)
-            #print "_incr_flag ->", v
-            return v
+            return self._cache.incr("flag:%s" % key, version=version)
         except ValueError:
             return self._reset_flag(key, version, timeout, 1)
 
     def _decr_flag(self, key, version, timeout=None):
         try:
-            v = self._cache.decr("flag:%s" % key, version=version)
-            #print "_decr_flag ->", v
-            return v
+            return self._cache.decr("flag:%s" % key, version=version)
         except ValueError:
             return self._reset_flag(key, version, timeout, 0)
 

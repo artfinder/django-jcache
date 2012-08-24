@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 @task
-def invoke_async(jcache, key, version, generator, stale, args, kwargs, expires_at):
+def invoke_async(jcache, key, version, generator, stale, args, kwargs, expires_at=None):
     value = None
     
     try:

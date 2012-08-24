@@ -77,6 +77,7 @@ class JCache(object):
             stale=None,
             generator=None,
             wait_on_generate=False,
+            async_wait_on_generate=False,
             *args, **kwargs):
         """
         Get a value by key, with optional versioning (see Django 1.3 docs).
@@ -105,71 +106,92 @@ class JCache(object):
         generator when the lazy object is resolved. Note that for this
         to work, the result will be passed back from celery, meaning
         it must be picklable.
+
+        If `async_wait_on_generate` is True then invoke_async will be
+        executed via Celery. Else it will be invoked in the current
+        thread instead.
         """
 
         if isinstance(key, list) or isinstance(key, tuple):
             # conflate them with '-' to make the key
             key = '-'.join(map(lambda x: unicode(x).encode('utf-8'), key))
 
-        flag = self._incr_flag(key, version, 1 + (stale or self.stale))
+        flag = None
         value = None
-        do_decr = True
+        do_decr = False
+        generate = False
+        async_result = None
+        now = time.time()
+            
         try:
             packed = self._cache.get(
                 "data:%s" % key,
                 default=None,
                 version=version
                 )
-            generate = False
+            
+            # no data for this key, we'll want to try and generate some
             if packed is None:
                 generate = generator is not None
                 if wait_on_generate:
                     # we'll get a startup herd here; another approach is to
                     # instead wait until there's a value, but that's harder
+                    # we'd need to store the task ID of the active invoke_async for this key in redis so we can make a
+                    # AsyncResult here and wait for it to complete
                     flag = 1
                 value = None
             else:
                 (value, stale_at) = packed
-                now = time.time()
                 if stale_at < now:
-                    generate = True
+                    generate = generator is not None
 
-            logger.info('jcache: %s=%s, generate=%s', key, packed, generate)
-            
-            if generate and generator is not None and flag == 1:
-                do_decr = False
-                logger.info('jcache (async) generating...')
-                result = invoke_async.apply_async(
-                        args=(
-                            self,
-                            key,
-                            version,
-                            generator,
-                            stale,
-                            args,
-                            kwargs,
-                            time.time() + (stale or self.stale)
-                        ),
-                    )
-                if packed is None:
-                    if not wait_on_generate:
-                        logger.info("not waiting for %s", key)
-                        value = None
+            # we only need to know the flag value if we are thinking about
+            # regenerating the key
+            if generate:
+                flag = self._incr_flag(key, version, 1 + (stale or self.stale))
+                if flag < 1: # flag was <= -1 before incr, happens when flag expires just before decr was called
+                    logger.warning('jcache: key=%s flag=%s resetting to 1', key, flag)
+                    flag = self._reset_flag(key, version, 1 + (stale or self.stale), value=1)
+                do_decr = True
+
+            logger.info('jcache: %s=%s, generate=%s flag=%s', key, packed, generate, flag)
+           
+            # only generate a value if we are the only active instance
+            if generate and flag == 1:
+                invoke_async_args = (
+                    self,
+                    key,
+                    version,
+                    generator,
+                    stale,
+                    args,
+                    kwargs,
+                    time.time() + (stale or self.stale)
+                )
+                
+                # async invocation is desired
+                if not wait_on_generate or (wait_on_generate and async_wait_on_generate):
+                    do_decr = False # let invoke_async decrement the flag
+                    logger.info('jcache (async) generating...')
+                    async_result = invoke_async.apply_async(args=invoke_async_args)
+                    value = None
+
+                # we'll return stale data to wait_on_generate calls even
+                # if we fire off a generator
+                if wait_on_generate and packed is None:
+                    logger.info("waiting for %s", key)
+                    
+                    opts = getattr(generator, '_jcache_options', {})
+                    
+                    if async_result:
+                        result_func = lambda: async_result.get(propogate=True)
                     else:
-                        logger.info("waiting for %s", key)
-                        if hasattr(generator, '_jcache_options'):
-                            opts = generator._jcache_options
-                        else:
-                            opts = {}
-                        if opts.get('lazy_result', False):
-                            # note that resolve may be called multiple times
-                            # if the SimpleLazyObject is deepcopied.
-                            def resolve():
-                                return result.get(propagate=True)
-                            value = SimpleLazyObject(resolve)
-                        else:
-                            value = result.get(propagate=True)
-                        logger.info("got the key %s = %s", key, value)
+                        result_func = lambda: invoke_async(*invoke_async_args)
+
+                    if opts.get('lazy_result'):
+                        value = SimpleLazyObject(lambda: result_func())
+                    else:
+                        value = result_func() 
         finally:
             if do_decr:
                 self._decr_flag(key, version, 1 + (stale or self.stale))

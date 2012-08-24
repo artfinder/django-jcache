@@ -22,14 +22,12 @@ def invoke_async(jcache, key, version, generator, stale, args, kwargs, expires_a
         logger = invoke_async.get_logger()
         
         if expires_at is None or expires_at > time.time():
-            #kwargs['logger'] = logger
             logger.debug("running generator %s" % generator)
+            
             value = generator(*args, **kwargs)
-            if stale is None:
-                stale_at = time.time() + jcache.stale
-            else:
-                stale_at = time.time() + stale
-            #logger.info("setting %s = %s (%s/%s)" % (key, value, stale_at, jcache.expiry))
+            
+            stale_at = time.time() + (stale or jcache.stale)
+            
             logger.debug("setting key %s (%s/%s)" % (key, stale_at, jcache.expiry))
             jcache.set(
                 key,
@@ -37,12 +35,12 @@ def invoke_async(jcache, key, version, generator, stale, args, kwargs, expires_a
                 stale_at=stale_at,
                 timeout=jcache.expiry,
                 version=version,
-                )
+            )
         else:
             logger.debug('invoke_async (%s) expired while waiting for worker' % generator)
     finally:
-        jcache._decr_flag(key, version, 1 + (stale or jcache.stale))
-   
+        flag = jcache._decr_flag(key, version, 1 + (stale or jcache.stale))
+
     return value
 
 class JCache(object):

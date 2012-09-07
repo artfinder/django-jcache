@@ -123,75 +123,75 @@ class JCache(object):
         async_result = None
         now = time.time()
             
-        try:
-            packed = self._cache.get(
-                "data:%s" % key,
-                default=None,
-                version=version
-                )
-            
-            # no data for this key, we'll want to try and generate some
-            if packed is None:
+        packed = self._cache.get(
+            "data:%s" % key,
+            default=None,
+            version=version
+            )
+        
+        # no data for this key, we'll want to try and generate some
+        if packed is None:
+            generate = generator is not None
+            if wait_on_generate:
+                logger.warning("jcache: Assuming flag:%s=1 due to missing data and wait_on_generate" % key)
+                # we'll get a startup herd here; another approach is to
+                # instead wait until there's a value, but that's harder
+                # we'd need to store the task ID of the active invoke_async for this key in redis so we can make a
+                # AsyncResult here and wait for it to complete
+                flag = 1
+            value = None
+        else:
+            (value, stale_at) = packed
+            if stale_at < now:
                 generate = generator is not None
-                if wait_on_generate:
-                    # we'll get a startup herd here; another approach is to
-                    # instead wait until there's a value, but that's harder
-                    # we'd need to store the task ID of the active invoke_async for this key in redis so we can make a
-                    # AsyncResult here and wait for it to complete
-                    flag = 1
-                value = None
-            else:
-                (value, stale_at) = packed
-                if stale_at < now:
-                    generate = generator is not None
-
+    
+        try:
             # we only need to know the flag value if we are thinking about
             # regenerating the key
             if generate:
                 flag = self._incr_flag(key, version, 1 + (stale or self.stale))
+                do_decr = True
                 if flag < 1: # flag was <= -1 before incr, happens when flag expires just before decr was called
                     logger.warning('jcache: key=%s flag=%s resetting to 1', key, flag)
                     flag = self._reset_flag(key, version, 1 + (stale or self.stale), value=1)
-                do_decr = True
 
-            logger.info('jcache: %s=%s, generate=%s flag=%s', key, packed, generate, flag)
-           
-            # only generate a value if we are the only active instance
-            if generate and flag == 1:
-                invoke_async_args = (
-                    self,
-                    key,
-                    version,
-                    generator,
-                    stale,
-                    args,
-                    kwargs,
-                    time.time() + (stale or self.stale)
-                )
-                
-                # async invocation is desired
-                if not wait_on_generate or (wait_on_generate and async_wait_on_generate):
-                    do_decr = False # let invoke_async decrement the flag
-                    logger.info('jcache (async) generating...')
-                    async_result = invoke_async.apply_async(args=invoke_async_args)
-                    value = None
-
-                # we'll return stale data to wait_on_generate calls even
-                # if we fire off a generator
-                if wait_on_generate and packed is None:
-                    logger.info("waiting for %s", key)
+                logger.info('jcache: %s=%s, generate=%s flag=%s', key, packed, generate, flag)
+               
+                # only generate a value if we are the only active instance
+                if generate and flag == 1:
+                    invoke_async_args = (
+                        self,
+                        key,
+                        version,
+                        generator,
+                        stale,
+                        args,
+                        kwargs,
+                        time.time() + (stale or self.stale)
+                    )
                     
-                    opts = getattr(generator, '_jcache_options', {})
-                    
-                    if async_result:
-                        result_func = lambda: async_result.get(propogate=True)
-                    else:
-                        result_func = lambda: invoke_async(*invoke_async_args)
+                    # async invocation is desired
+                    if not wait_on_generate or (wait_on_generate and async_wait_on_generate):
+                        do_decr = False # let invoke_async decrement the flag
+                        logger.info('jcache: apply_sync generating data:%s' % key)
+                        async_result = invoke_async.apply_async(args=invoke_async_args)
 
-                    if opts.get('lazy_result'):
-                        value = SimpleLazyObject(lambda: result_func())
-                    else:
-                        value = result_func() 
+                    # block until we have a fresh value
+                    if wait_on_generate and packed is None:
+                        logger.info("jcache: waiting for data:%s", key)
+                        
+                        opts = getattr(generator, '_jcache_options', {})
+                        
+                        if async_result:
+                            result_func = lambda: async_result.get(propogate=True)
+                        else:
+                            do_decr = False # invoke_async being called locally still decrements the flag
+                            result_func = lambda: invoke_async(*invoke_async_args)
+
+                        if opts.get('lazy_result'):
+                            value = SimpleLazyObject(lambda: result_func())
+                        else:
+                            value = result_func() 
         finally:
             if do_decr:
                 self._decr_flag(key, version, 1 + (stale or self.stale))
@@ -234,12 +234,17 @@ class JCache(object):
 
     def freshen(self, key, version=None, generator=None, stale=None, *args, **kwargs):
         flag = self._incr_flag(key, version, 1 + (stale or self.stale))
+       
+        if flag > 1:
+            self._decr_flag(key, version)
+        else:
+            logger.warning('jcache: (freshen) key=%s flag=%s resetting to 1', key, flag)
+            flag = self._reset_flag(key, version, 1 + (stale or self.stale), value=1)
+        
         if flag == 1:
             return invoke_async.apply_async(
                 args=(self, key, version, generator, stale, args, kwargs, time.time() + (stale or self.stale)),
             )
-        else:
-            self._decr_flag(key, version)
 
     def delete(self, key, version):
         self._cache.delete(key, version=version)
